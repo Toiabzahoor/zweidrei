@@ -5,6 +5,7 @@ add_library(zweidrei_core
     zobrist.cpp
     tt.cpp
     evaluate.cpp
+    nnue.cpp
     search.cpp
     uci.cpp
 )

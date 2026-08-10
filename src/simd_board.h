@@ -14,13 +14,24 @@ struct alignas(64) SimdBoard {
     int mg_pst_score;
     int eg_pst_score;
     int game_phase;
+    uint8_t castling_rights; 
+    uint8_t ep_square; 
+    
+    
+    alignas(64) int16_t white_acc[256];
+    alignas(64) int16_t black_acc[256];
 
     SimdBoard() {
         std::memset(squares, EMPTY_SQUARE, 64);
         mg_pst_score = 0;
         eg_pst_score = 0;
         game_phase = 0;
+        castling_rights = 15;
+        ep_square = 64;
     }
+
+    void init_nnue();
+    void update_nnue(int from, int to, uint8_t piece, uint8_t captured);
 
     void set_fen(const std::string& fen);
     void print() const;

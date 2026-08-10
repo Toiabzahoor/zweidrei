@@ -228,7 +228,7 @@ static void BM_EvalBatch8(benchmark::State& state) {
     init_evaluate();
 
     for (auto _ : state) {
-        eval_batch(boards, side_to_move, scores);
+        evaluate_batch(boards, side_to_move, scores);
         benchmark::DoNotOptimize(scores);
     }
 }

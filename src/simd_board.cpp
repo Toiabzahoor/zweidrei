@@ -1,12 +1,23 @@
 #include "simd_board.h"
+#include "nnue.h"
+#include <iostream>
 
 namespace zweidrei {
 
 void SimdBoard::set_fen(const std::string& fen) {
     std::memset(squares, EMPTY_SQUARE, 64);
+    castling_rights = 0;
+    ep_square = 64;
+    
     int sq = SQ_A8;
-    for (char c : fen) {
-        if (c == ' ') break;
+    size_t i = 0;
+    
+    for (; i < fen.length(); ++i) {
+        char c = fen[i];
+        if (c == ' ') {
+            i++;
+            break;
+        }
         if (c == '/') {
             sq -= 16;
         } else if (c >= '1' && c <= '8') {
@@ -33,6 +44,98 @@ void SimdBoard::set_fen(const std::string& fen) {
             }
         }
     }
+    
+    if (i < fen.length()) {
+        while (i < fen.length() && fen[i] != ' ') i++;
+        i++;
+    }
+    
+    if (i < fen.length()) {
+        while (i < fen.length() && fen[i] != ' ') {
+            if (fen[i] == 'K') castling_rights |= 1;
+            else if (fen[i] == 'Q') castling_rights |= 2;
+            else if (fen[i] == 'k') castling_rights |= 4;
+            else if (fen[i] == 'q') castling_rights |= 8;
+            i++;
+        }
+        i++;
+    }
+    
+    if (i < fen.length()) {
+        if (fen[i] != '-') {
+            int f = fen[i] - 'a';
+            int r = fen[i+1] - '1';
+            ep_square = r * 8 + f;
+        }
+    }
+
+    init_nnue();
+}
+
+void SimdBoard::init_nnue() {
+    for (int i = 0; i < 256; i++) {
+        white_acc[i] = nnue::feature_biases[i];
+        black_acc[i] = nnue::feature_biases[i];
+    }
+    
+    uint64_t w_king_mask = piece_mask(WHITE | KING);
+    uint64_t b_king_mask = piece_mask(BLACK | KING);
+    
+    if (!w_king_mask || !b_king_mask) return;
+    
+    int w_k_sq = std::countr_zero(w_king_mask);
+    int b_k_sq = std::countr_zero(b_king_mask);
+    
+    for (int sq = 0; sq < 64; sq++) {
+        uint8_t p = squares[sq];
+        if (p == EMPTY_SQUARE || (p & 0x0F) == KING) continue;
+        
+        int color = (p & 0xF0) == WHITE ? 0 : 1;
+        int type = p & 0x0F; 
+        
+        int w_idx = nnue::make_halfkp_index(0, w_k_sq, sq, type, color);
+        int b_idx = nnue::make_halfkp_index(1, b_k_sq, sq, type, color);
+        
+        for (int i = 0; i < 256; i++) {
+            white_acc[i] += nnue::feature_weights[w_idx][i];
+            black_acc[i] += nnue::feature_weights[b_idx][i];
+        }
+    }
+}
+
+void SimdBoard::update_nnue(int from, int to, uint8_t piece, uint8_t captured) {
+    uint64_t w_king_mask = piece_mask(WHITE | KING);
+    uint64_t b_king_mask = piece_mask(BLACK | KING);
+    
+    if (!w_king_mask || !b_king_mask) return;
+    
+    int w_k_sq = std::countr_zero(w_king_mask);
+    int b_k_sq = std::countr_zero(b_king_mask);
+    
+    int p_color = (piece & 0xF0) == WHITE ? 0 : 1;
+    int p_type = piece & 0x0F;
+    
+    int w_idx_from = nnue::make_halfkp_index(0, w_k_sq, from, p_type, p_color);
+    int b_idx_from = nnue::make_halfkp_index(1, b_k_sq, from, p_type, p_color);
+    int w_idx_to = nnue::make_halfkp_index(0, w_k_sq, to, p_type, p_color);
+    int b_idx_to = nnue::make_halfkp_index(1, b_k_sq, to, p_type, p_color);
+    
+    int w_idx_cap = -1, b_idx_cap = -1;
+    if (captured != EMPTY_SQUARE) {
+        int cap_color = (captured & 0xF0) == WHITE ? 0 : 1;
+        int cap_type = captured & 0x0F;
+        w_idx_cap = nnue::make_halfkp_index(0, w_k_sq, to, cap_type, cap_color);
+        b_idx_cap = nnue::make_halfkp_index(1, b_k_sq, to, cap_type, cap_color);
+    }
+    
+    for (int i = 0; i < 256; i++) {
+        white_acc[i] += nnue::feature_weights[w_idx_to][i] - nnue::feature_weights[w_idx_from][i];
+        black_acc[i] += nnue::feature_weights[b_idx_to][i] - nnue::feature_weights[b_idx_from][i];
+        if (w_idx_cap != -1) {
+            white_acc[i] -= nnue::feature_weights[w_idx_cap][i];
+            black_acc[i] -= nnue::feature_weights[b_idx_cap][i];
+        }
+    }
 }
 
 void SimdBoard::print() const {
@@ -57,4 +160,4 @@ void SimdBoard::print() const {
     std::cout << "  A B C D E F G H\n\n";
 }
 
-}
+} 

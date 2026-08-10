@@ -20,25 +20,66 @@ int history_table[2][64][64] = {0};
 
 void print_move(uint16_t m);
 
-inline bool is_attacked(const SimdBoard& board, Square sq, int attacker_color) {
-    uint64_t occ = board.occupancy_mask();
-    if (attacker_color == WHITE) {
-        if (get_pawn_attacks(sq, 0x10) & board.piece_mask(W_PAWN)) return true;
-        if (get_knight_attacks(sq) & board.piece_mask(W_KNIGHT)) return true;
-        if (get_bishop_attacks(sq, occ) & board.piece_mask(W_BISHOP)) return true;
-        if (get_rook_attacks(sq, occ) & board.piece_mask(W_ROOK)) return true;
-        if (get_queen_attacks(sq, occ) & board.piece_mask(W_QUEEN)) return true;
-        if (get_king_attacks(sq) & board.piece_mask(W_KING)) return true;
-    } else {
-        if (get_pawn_attacks(sq, 0x00) & board.piece_mask(B_PAWN)) return true;
-        if (get_knight_attacks(sq) & board.piece_mask(B_KNIGHT)) return true;
-        if (get_bishop_attacks(sq, occ) & board.piece_mask(B_BISHOP)) return true;
-        if (get_rook_attacks(sq, occ) & board.piece_mask(B_ROOK)) return true;
-        if (get_queen_attacks(sq, occ) & board.piece_mask(B_QUEEN)) return true;
-        if (get_king_attacks(sq) & board.piece_mask(B_KING)) return true;
+inline void make_move(SimdBoard& next_board, Move m, uint8_t side_to_move) {
+    uint8_t piece = next_board.squares[m.from()];
+    uint8_t captured = next_board.squares[m.to()];
+    uint8_t old_ep = next_board.ep_square;
+    
+    
+    if (m.from() == SQ_E1 || m.to() == SQ_E1) next_board.castling_rights &= ~3;
+    if (m.from() == SQ_E8 || m.to() == SQ_E8) next_board.castling_rights &= ~12;
+    if (m.from() == SQ_H1 || m.to() == SQ_H1) next_board.castling_rights &= ~1;
+    if (m.from() == SQ_A1 || m.to() == SQ_A1) next_board.castling_rights &= ~2;
+    if (m.from() == SQ_H8 || m.to() == SQ_H8) next_board.castling_rights &= ~4;
+    if (m.from() == SQ_A8 || m.to() == SQ_A8) next_board.castling_rights &= ~8;
+    
+    int type = piece & 0x0F;
+    int to_rank = m.to() / 8;
+    int from_rank = m.from() / 8;
+    
+    
+    next_board.ep_square = 64;
+    if (type == PAWN && std::abs(from_rank - to_rank) == 2) {
+        next_board.ep_square = (m.from() + m.to()) / 2;
     }
-    return false;
+    
+    bool is_castling = false;
+    
+    if (type == KING && std::abs((int)m.to() - (int)m.from()) == 2) {
+        is_castling = true;
+        if (m.to() == SQ_G1) { next_board.squares[SQ_F1] = next_board.squares[SQ_H1]; next_board.squares[SQ_H1] = EMPTY_SQUARE; }
+        else if (m.to() == SQ_C1) { next_board.squares[SQ_D1] = next_board.squares[SQ_A1]; next_board.squares[SQ_A1] = EMPTY_SQUARE; }
+        else if (m.to() == SQ_G8) { next_board.squares[SQ_F8] = next_board.squares[SQ_H8]; next_board.squares[SQ_H8] = EMPTY_SQUARE; }
+        else if (m.to() == SQ_C8) { next_board.squares[SQ_D8] = next_board.squares[SQ_A8]; next_board.squares[SQ_A8] = EMPTY_SQUARE; }
+    }
+    
+    
+    if (type == PAWN && m.to() == old_ep) {
+        int captured_sq = (side_to_move == WHITE) ? (m.to() - 8) : (m.to() + 8);
+        next_board.squares[captured_sq] = EMPTY_SQUARE;
+        is_castling = true; 
+    }
+    
+    next_board.squares[m.to()] = piece;
+    next_board.squares[m.from()] = EMPTY_SQUARE;
+    
+    
+    if (m.flags() & 2) { 
+        uint8_t color = piece & 0xF0;
+        next_board.squares[m.to()] = color | QUEEN;
+        is_castling = true; 
+    }
+    
+    if (is_castling) {
+        init_board_eval(next_board);
+        return;
+    }
+    
+    
+    next_board.update_nnue(m.from(), m.to(), piece, captured);
 }
+
+
 
 void reset_search() {
     std::memset(killer_moves, 0, sizeof(killer_moves));
@@ -126,47 +167,7 @@ int q_search(const SimdBoard& board, int side_to_move, int alpha, int beta, int 
     for (int i = 0; i < list.size; ++i) {
         Move m = list.moves[i];
         SimdBoard next_board = board;
-        
-        uint8_t piece = next_board.squares[m.from()];
-        uint8_t captured = next_board.squares[m.to()];
-        
-        next_board.squares[m.to()] = piece;
-        next_board.squares[m.from()] = EMPTY_SQUARE;
-        
-        int type = piece & 0x0F;
-        int mg_sq_pst = 0;
-        int eg_sq_pst = 0;
-        if (piece & BLACK) {
-            mg_sq_pst = MG_PST[type][m.to()] - MG_PST[type][m.from()];
-            eg_sq_pst = EG_PST[type][m.to()] - EG_PST[type][m.from()];
-            next_board.mg_pst_score -= mg_sq_pst;
-            next_board.eg_pst_score -= eg_sq_pst;
-        } else {
-            int to_flipped = m.to() ^ 56;
-            int from_flipped = m.from() ^ 56;
-            mg_sq_pst = MG_PST[type][to_flipped] - MG_PST[type][from_flipped];
-            eg_sq_pst = EG_PST[type][to_flipped] - EG_PST[type][from_flipped];
-            next_board.mg_pst_score += mg_sq_pst;
-            next_board.eg_pst_score += eg_sq_pst;
-        }
-        
-        if (captured != EMPTY_SQUARE) {
-            int cap_type = captured & 0x0F;
-            if (captured & BLACK) {
-                next_board.mg_pst_score += MG_PST[cap_type][m.to()];
-                next_board.eg_pst_score += EG_PST[cap_type][m.to()];
-            } else {
-                int to_flipped = m.to() ^ 56;
-                next_board.mg_pst_score -= MG_PST[cap_type][to_flipped];
-                next_board.eg_pst_score -= EG_PST[cap_type][to_flipped];
-            }
-            int phase_val = 0;
-            if (cap_type == KNIGHT || cap_type == BISHOP) phase_val = 1;
-            else if (cap_type == ROOK) phase_val = 2;
-            else if (cap_type == QUEEN) phase_val = 4;
-            next_board.game_phase -= phase_val;
-            if (next_board.game_phase < 0) next_board.game_phase = 0;
-        }
+        make_move(next_board, m, side_to_move);
         
         int score = -q_search(next_board, side_to_move == WHITE ? BLACK : WHITE, -beta, -alpha, ply + 1);
         
@@ -283,53 +284,13 @@ int alpha_beta(const SimdBoard& board, int side_to_move, int depth, int alpha, i
         }
 
         SimdBoard next_board = board;
-        
-        uint8_t piece = next_board.squares[m.from()];
-        uint8_t captured = next_board.squares[m.to()];
-        
-        next_board.squares[m.to()] = piece;
-        next_board.squares[m.from()] = EMPTY_SQUARE;
-        
-        int type = piece & 0x0F;
-        int mg_sq_pst = 0;
-        int eg_sq_pst = 0;
-        if (piece & BLACK) {
-            mg_sq_pst = MG_PST[type][m.to()] - MG_PST[type][m.from()];
-            eg_sq_pst = EG_PST[type][m.to()] - EG_PST[type][m.from()];
-            next_board.mg_pst_score -= mg_sq_pst;
-            next_board.eg_pst_score -= eg_sq_pst;
-        } else {
-            int to_flipped = m.to() ^ 56;
-            int from_flipped = m.from() ^ 56;
-            mg_sq_pst = MG_PST[type][to_flipped] - MG_PST[type][from_flipped];
-            eg_sq_pst = EG_PST[type][to_flipped] - EG_PST[type][from_flipped];
-            next_board.mg_pst_score += mg_sq_pst;
-            next_board.eg_pst_score += eg_sq_pst;
-        }
-        
-        if (captured != EMPTY_SQUARE) {
-            int cap_type = captured & 0x0F;
-            if (captured & BLACK) {
-                next_board.mg_pst_score += MG_PST[cap_type][m.to()];
-                next_board.eg_pst_score += EG_PST[cap_type][m.to()];
-            } else {
-                int to_flipped = m.to() ^ 56;
-                next_board.mg_pst_score -= MG_PST[cap_type][to_flipped];
-                next_board.eg_pst_score -= EG_PST[cap_type][to_flipped];
-            }
-            int phase_val = 0;
-            if (cap_type == KNIGHT || cap_type == BISHOP) phase_val = 1;
-            else if (cap_type == ROOK) phase_val = 2;
-            else if (cap_type == QUEEN) phase_val = 4;
-            next_board.game_phase -= phase_val;
-            if (next_board.game_phase < 0) next_board.game_phase = 0;
-        }
+        uint8_t piece = board.squares[m.from()];
+        make_move(next_board, m, side_to_move);
         
         int next_depth = depth - 1;
         uint8_t op_king = (side_to_move == WHITE) ? B_KING : W_KING;
         uint64_t op_king_mask = next_board.piece_mask(op_king);
         if (op_king_mask) {
-            Square op_king_sq = (Square)__builtin_ctzll(op_king_mask);
             int moved_type = piece & 0x0F;
             bool checks = false;
             if (moved_type == PAWN) checks = get_pawn_attacks((Square)m.to(), piece & 0x10) & op_king_mask;
@@ -343,7 +304,11 @@ int alpha_beta(const SimdBoard& board, int side_to_move, int depth, int alpha, i
         
         int score = 0;
         if (depth >= 3 && m.flags() == 0 && i >= 4 && next_depth == depth - 1) {
-            score = -alpha_beta(next_board, side_to_move == WHITE ? BLACK : WHITE, next_depth - 1, -alpha - 1, -alpha, ply + 1, true);
+            int R = 1 + (depth / 6) + (i / 8);
+            if (R < 1) R = 1;
+            if (R > depth - 2) R = depth - 2;
+            
+            score = -alpha_beta(next_board, side_to_move == WHITE ? BLACK : WHITE, next_depth - R, -alpha - 1, -alpha, ply + 1, true);
             if (score > alpha) {
                 score = -alpha_beta(next_board, side_to_move == WHITE ? BLACK : WHITE, next_depth, -beta, -alpha, ply + 1, true);
             }
