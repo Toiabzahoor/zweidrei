@@ -1,0 +1,2 @@
+add_executable(zweidrei_benchmarks bench_simd.cpp)
+target_link_libraries(zweidrei_benchmarks PRIVATE zweidrei_core benchmark::benchmark benchmark::benchmark_main)

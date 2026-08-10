@@ -1,0 +1,16 @@
+build/
+.vscode/
+.agents/
+*.exe
+*.o
+*.obj
+*.a
+*.lib
+*.dll
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+.ninja_deps
+.ninja_log
+build.ninja

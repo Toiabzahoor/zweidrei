@@ -1,0 +1,54 @@
+#ifndef SIMD_BOARD_H
+#define SIMD_BOARD_H
+
+#include "types.h"
+#include <immintrin.h>
+#include <cstring>
+#include <iostream>
+#include <string>
+
+namespace zweidrei {
+
+struct alignas(64) SimdBoard {
+    uint8_t squares[64];
+
+    SimdBoard() {
+        std::memset(squares, EMPTY_SQUARE, 64);
+    }
+
+    void set_fen(const std::string& fen);
+    void print() const;
+
+    inline void put_piece(Square sq, uint8_t piece) {
+        squares[sq] = piece;
+    }
+
+    inline void remove_piece(Square sq) {
+        squares[sq] = EMPTY_SQUARE;
+    }
+
+    inline __m512i load() const {
+        return _mm512_load_si512((void const*)squares);
+    }
+
+    inline uint64_t get_piece_mask(uint8_t piece) const {
+        __m512i board_vec = load();
+        __m512i piece_vec = _mm512_set1_epi8(piece);
+        return _mm512_cmpeq_epi8_mask(board_vec, piece_vec);
+    }
+
+    inline uint64_t get_white_pieces_mask() const {
+        __m512i board_vec = load();
+        __m512i max_w = _mm512_set1_epi8(W_KING);
+        __m512i min_w = _mm512_set1_epi8(W_PAWN);
+        
+        __mmask64 mask_le = _mm512_cmple_epu8_mask(board_vec, max_w);
+        __mmask64 mask_ge = _mm512_cmpge_epu8_mask(board_vec, min_w);
+        
+        return mask_le & mask_ge;
+    }
+};
+
+}
+
+#endif
