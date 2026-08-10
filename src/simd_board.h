@@ -11,11 +11,15 @@ namespace zweidrei {
 
 struct alignas(64) SimdBoard {
     uint8_t squares[64];
-    int pst_score;
+    int mg_pst_score;
+    int eg_pst_score;
+    int game_phase;
 
     SimdBoard() {
         std::memset(squares, EMPTY_SQUARE, 64);
-        pst_score = 0;
+        mg_pst_score = 0;
+        eg_pst_score = 0;
+        game_phase = 0;
     }
 
     void set_fen(const std::string& fen);
@@ -48,6 +52,12 @@ struct alignas(64) SimdBoard {
         __mmask64 mask_ge = _mm512_cmpge_epu8_mask(board_vec, min_w);
         
         return mask_le & mask_ge;
+    }
+
+    inline uint64_t occupancy_mask() const {
+        __m512i board_vec = load();
+        __m512i empty_vec = _mm512_setzero_si512();
+        return ~_mm512_cmpeq_epi8_mask(board_vec, empty_vec);
     }
 };
 

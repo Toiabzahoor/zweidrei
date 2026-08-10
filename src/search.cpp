@@ -3,6 +3,7 @@
 #include "zobrist.h"
 #include "tt.h"
 #include "uci.h"
+#include "attacks.h"
 #include <iostream>
 #include <algorithm>
 #include <chrono>
@@ -18,6 +19,26 @@ uint16_t killer_moves[64][2] = {0};
 int history_table[2][64][64] = {0};
 
 void print_move(uint16_t m);
+
+inline bool is_attacked(const SimdBoard& board, Square sq, int attacker_color) {
+    uint64_t occ = board.occupancy_mask();
+    if (attacker_color == WHITE) {
+        if (get_pawn_attacks(sq, 0x10) & board.piece_mask(W_PAWN)) return true;
+        if (get_knight_attacks(sq) & board.piece_mask(W_KNIGHT)) return true;
+        if (get_bishop_attacks(sq, occ) & board.piece_mask(W_BISHOP)) return true;
+        if (get_rook_attacks(sq, occ) & board.piece_mask(W_ROOK)) return true;
+        if (get_queen_attacks(sq, occ) & board.piece_mask(W_QUEEN)) return true;
+        if (get_king_attacks(sq) & board.piece_mask(W_KING)) return true;
+    } else {
+        if (get_pawn_attacks(sq, 0x00) & board.piece_mask(B_PAWN)) return true;
+        if (get_knight_attacks(sq) & board.piece_mask(B_KNIGHT)) return true;
+        if (get_bishop_attacks(sq, occ) & board.piece_mask(B_BISHOP)) return true;
+        if (get_rook_attacks(sq, occ) & board.piece_mask(B_ROOK)) return true;
+        if (get_queen_attacks(sq, occ) & board.piece_mask(B_QUEEN)) return true;
+        if (get_king_attacks(sq) & board.piece_mask(B_KING)) return true;
+    }
+    return false;
+}
 
 void reset_search() {
     std::memset(killer_moves, 0, sizeof(killer_moves));
@@ -65,6 +86,16 @@ void sort_moves(MoveList& list) {
 int q_search(const SimdBoard& board, int side_to_move, int alpha, int beta, int ply) {
     nodes_searched++;
     seldepth = std::max(seldepth, ply);
+    
+    if (ply >= 99) {
+        int eval = evaluate(board, WHITE);
+        return side_to_move == WHITE ? eval : -eval;
+    }
+    
+    Square op_king_sq = (Square)__builtin_ctzll(board.piece_mask((side_to_move == WHITE) ? B_KING : W_KING));
+    if (is_attacked(board, op_king_sq, side_to_move)) {
+        return 10000 - ply;
+    }
     if ((nodes_searched & 4095) == 0) {
         if (search_time_limit_ms > 0) {
             auto now = std::chrono::steady_clock::now();
@@ -77,7 +108,7 @@ int q_search(const SimdBoard& board, int side_to_move, int alpha, int beta, int 
         }
     }
 
-    int stand_pat = evaluate(board, WHITE) + board.pst_score;
+    int stand_pat = evaluate(board, WHITE);
     if (side_to_move == BLACK) stand_pat = -stand_pat;
     
     if (stand_pat >= beta) {
@@ -99,33 +130,42 @@ int q_search(const SimdBoard& board, int side_to_move, int alpha, int beta, int 
         uint8_t piece = next_board.squares[m.from()];
         uint8_t captured = next_board.squares[m.to()];
         
-        if ((captured & 0x0F) == KING) {
-            return 10000;
-        }
-        
         next_board.squares[m.to()] = piece;
         next_board.squares[m.from()] = EMPTY_SQUARE;
         
         int type = piece & 0x0F;
-        int sq_pst = 0;
+        int mg_sq_pst = 0;
+        int eg_sq_pst = 0;
         if (piece & BLACK) {
-            sq_pst = PST[type][m.to()] - PST[type][m.from()];
-            next_board.pst_score -= sq_pst;
+            mg_sq_pst = MG_PST[type][m.to()] - MG_PST[type][m.from()];
+            eg_sq_pst = EG_PST[type][m.to()] - EG_PST[type][m.from()];
+            next_board.mg_pst_score -= mg_sq_pst;
+            next_board.eg_pst_score -= eg_sq_pst;
         } else {
             int to_flipped = m.to() ^ 56;
             int from_flipped = m.from() ^ 56;
-            sq_pst = PST[type][to_flipped] - PST[type][from_flipped];
-            next_board.pst_score += sq_pst;
+            mg_sq_pst = MG_PST[type][to_flipped] - MG_PST[type][from_flipped];
+            eg_sq_pst = EG_PST[type][to_flipped] - EG_PST[type][from_flipped];
+            next_board.mg_pst_score += mg_sq_pst;
+            next_board.eg_pst_score += eg_sq_pst;
         }
         
         if (captured != EMPTY_SQUARE) {
             int cap_type = captured & 0x0F;
             if (captured & BLACK) {
-                next_board.pst_score += PST[cap_type][m.to()];
+                next_board.mg_pst_score += MG_PST[cap_type][m.to()];
+                next_board.eg_pst_score += EG_PST[cap_type][m.to()];
             } else {
                 int to_flipped = m.to() ^ 56;
-                next_board.pst_score -= PST[cap_type][to_flipped];
+                next_board.mg_pst_score -= MG_PST[cap_type][to_flipped];
+                next_board.eg_pst_score -= EG_PST[cap_type][to_flipped];
             }
+            int phase_val = 0;
+            if (cap_type == KNIGHT || cap_type == BISHOP) phase_val = 1;
+            else if (cap_type == ROOK) phase_val = 2;
+            else if (cap_type == QUEEN) phase_val = 4;
+            next_board.game_phase -= phase_val;
+            if (next_board.game_phase < 0) next_board.game_phase = 0;
         }
         
         int score = -q_search(next_board, side_to_move == WHITE ? BLACK : WHITE, -beta, -alpha, ply + 1);
@@ -146,6 +186,16 @@ int q_search(const SimdBoard& board, int side_to_move, int alpha, int beta, int 
 
 int alpha_beta(const SimdBoard& board, int side_to_move, int depth, int alpha, int beta, int ply, bool can_null, const uint16_t* excluded_moves, int num_excluded) {
     nodes_searched++;
+    
+    if (ply >= 99) {
+        int eval = evaluate(board, WHITE);
+        return side_to_move == WHITE ? eval : -eval;
+    }
+    
+    Square op_king_sq = (Square)__builtin_ctzll(board.piece_mask((side_to_move == WHITE) ? B_KING : W_KING));
+    if (is_attacked(board, op_king_sq, side_to_move)) {
+        return 10000 - ply;
+    }
     
     if ((nodes_searched & 4095) == 0) {
         if (search_time_limit_ms > 0) {
@@ -178,6 +228,14 @@ int alpha_beta(const SimdBoard& board, int side_to_move, int depth, int alpha, i
         int null_score = -alpha_beta(board, side_to_move == WHITE ? BLACK : WHITE, depth - 1 - R, -beta, -beta + 1, ply + 1, false);
         if (null_score >= beta) {
             return beta;
+        }
+    }
+
+    if (depth <= 2 && can_null && ply > 0) {
+        int static_eval = evaluate(board, WHITE);
+        if (side_to_move == BLACK) static_eval = -static_eval;
+        if (static_eval + depth * 150 < alpha) {
+            return q_search(board, side_to_move, alpha, beta, ply);
         }
     }
 
@@ -229,36 +287,69 @@ int alpha_beta(const SimdBoard& board, int side_to_move, int depth, int alpha, i
         uint8_t piece = next_board.squares[m.from()];
         uint8_t captured = next_board.squares[m.to()];
         
-        if ((captured & 0x0F) == KING) {
-            return 10000;
-        }
-        
         next_board.squares[m.to()] = piece;
         next_board.squares[m.from()] = EMPTY_SQUARE;
         
         int type = piece & 0x0F;
-        int sq_pst = 0;
+        int mg_sq_pst = 0;
+        int eg_sq_pst = 0;
         if (piece & BLACK) {
-            sq_pst = PST[type][m.to()] - PST[type][m.from()];
-            next_board.pst_score -= sq_pst;
+            mg_sq_pst = MG_PST[type][m.to()] - MG_PST[type][m.from()];
+            eg_sq_pst = EG_PST[type][m.to()] - EG_PST[type][m.from()];
+            next_board.mg_pst_score -= mg_sq_pst;
+            next_board.eg_pst_score -= eg_sq_pst;
         } else {
             int to_flipped = m.to() ^ 56;
             int from_flipped = m.from() ^ 56;
-            sq_pst = PST[type][to_flipped] - PST[type][from_flipped];
-            next_board.pst_score += sq_pst;
+            mg_sq_pst = MG_PST[type][to_flipped] - MG_PST[type][from_flipped];
+            eg_sq_pst = EG_PST[type][to_flipped] - EG_PST[type][from_flipped];
+            next_board.mg_pst_score += mg_sq_pst;
+            next_board.eg_pst_score += eg_sq_pst;
         }
         
         if (captured != EMPTY_SQUARE) {
             int cap_type = captured & 0x0F;
             if (captured & BLACK) {
-                next_board.pst_score += PST[cap_type][m.to()];
+                next_board.mg_pst_score += MG_PST[cap_type][m.to()];
+                next_board.eg_pst_score += EG_PST[cap_type][m.to()];
             } else {
                 int to_flipped = m.to() ^ 56;
-                next_board.pst_score -= PST[cap_type][to_flipped];
+                next_board.mg_pst_score -= MG_PST[cap_type][to_flipped];
+                next_board.eg_pst_score -= EG_PST[cap_type][to_flipped];
             }
+            int phase_val = 0;
+            if (cap_type == KNIGHT || cap_type == BISHOP) phase_val = 1;
+            else if (cap_type == ROOK) phase_val = 2;
+            else if (cap_type == QUEEN) phase_val = 4;
+            next_board.game_phase -= phase_val;
+            if (next_board.game_phase < 0) next_board.game_phase = 0;
         }
         
-        int score = -alpha_beta(next_board, side_to_move == WHITE ? BLACK : WHITE, depth - 1, -beta, -alpha, ply + 1, true);
+        int next_depth = depth - 1;
+        uint8_t op_king = (side_to_move == WHITE) ? B_KING : W_KING;
+        uint64_t op_king_mask = next_board.piece_mask(op_king);
+        if (op_king_mask) {
+            Square op_king_sq = (Square)__builtin_ctzll(op_king_mask);
+            int moved_type = piece & 0x0F;
+            bool checks = false;
+            if (moved_type == PAWN) checks = get_pawn_attacks((Square)m.to(), piece & 0x10) & op_king_mask;
+            else if (moved_type == KNIGHT) checks = get_knight_attacks((Square)m.to()) & op_king_mask;
+            else if (moved_type == BISHOP) checks = get_bishop_attacks((Square)m.to(), next_board.occupancy_mask()) & op_king_mask;
+            else if (moved_type == ROOK) checks = get_rook_attacks((Square)m.to(), next_board.occupancy_mask()) & op_king_mask;
+            else if (moved_type == QUEEN) checks = get_queen_attacks((Square)m.to(), next_board.occupancy_mask()) & op_king_mask;
+            
+            if (checks) next_depth++;
+        }
+        
+        int score = 0;
+        if (depth >= 3 && m.flags() == 0 && i >= 4 && next_depth == depth - 1) {
+            score = -alpha_beta(next_board, side_to_move == WHITE ? BLACK : WHITE, next_depth - 1, -alpha - 1, -alpha, ply + 1, true);
+            if (score > alpha) {
+                score = -alpha_beta(next_board, side_to_move == WHITE ? BLACK : WHITE, next_depth, -beta, -alpha, ply + 1, true);
+            }
+        } else {
+            score = -alpha_beta(next_board, side_to_move == WHITE ? BLACK : WHITE, next_depth, -beta, -alpha, ply + 1, true);
+        }
         
         if (search_stopped.load(std::memory_order_relaxed)) {
             return 0;

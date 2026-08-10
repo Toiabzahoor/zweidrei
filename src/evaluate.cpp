@@ -4,7 +4,7 @@ namespace zweidrei {
 
 alignas(64) __m512i piece_value_table;
 
-const int PST[16][64] = {
+const int MG_PST[16][64] = {
     {0},
     {
          0,  0,  0,  0,  0,  0,  0,  0,
@@ -73,21 +73,101 @@ const int PST[16][64] = {
     {0}, {0}, {0}, {0}, {0}
 };
 
-int eval_pst(const SimdBoard& board) {
-    int score = 0;
+const int EG_PST[16][64] = {
+    {0},
+    {
+         0,  0,  0,  0,  0,  0,  0,  0,
+        50, 50, 50, 50, 50, 50, 50, 50,
+        20, 20, 30, 40, 40, 30, 20, 20,
+        15, 15, 20, 35, 35, 20, 15, 15,
+        10, 10, 10, 30, 30, 10, 10, 10,
+        15,  5, -5, 10, 10, -5,  5, 15,
+        15, 20, 20, -5, -5, 20, 20, 15,
+         0,  0,  0,  0,  0,  0,  0,  0
+    },
+    {
+        -20,-10,-10,-10,-10,-10,-10,-20,
+        -10,  0,  0,  0,  0,  0,  0,-10,
+        -10,  0, 10, 15, 15, 10,  0,-10,
+        -10,  5, 15, 20, 20, 15,  5,-10,
+        -10,  0, 15, 20, 20, 15,  0,-10,
+        -10,  5, 10, 15, 15, 10,  5,-10,
+        -10,-10,  0,  5,  5,  0,-10,-10,
+        -20,-10,-10,-10,-10,-10,-10,-20
+    },
+    {
+        -10, -5, -5, -5, -5, -5, -5,-10,
+         -5,  0,  0,  0,  0,  0,  0, -5,
+         -5,  0,  5, 10, 10,  5,  0, -5,
+         -5,  5,  5, 10, 10,  5,  5, -5,
+         -5,  0, 10, 10, 10, 10,  0, -5,
+         -5, 10, 10, 10, 10, 10, 10, -5,
+         -5,  5,  0,  0,  0,  0,  5, -5,
+        -10, -5, -5, -5, -5, -5, -5,-10
+    },
+    {0},
+    {
+         0,  0,  0,  0,  0,  0,  0,  0,
+         5, 10, 10, 10, 10, 10, 10,  5,
+         0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  5,  5,  0,  0,  0
+    },
+    {0}, {0}, {0},
+    {
+        -10, -5, -5,  0,  0, -5, -5,-10,
+         -5,  0,  0,  0,  0,  0,  0, -5,
+         -5,  0,  5,  5,  5,  5,  0, -5,
+          0,  0,  5,  5,  5,  5,  0,  0,
+          0,  0,  5,  5,  5,  5,  0,  0,
+         -5,  5,  5,  5,  5,  5,  0, -5,
+         -5,  0,  5,  0,  0,  0,  0, -5,
+        -10, -5, -5,  0,  0, -5, -5,-10
+    },
+    {
+        -20,-10,-10,-10,-10,-10,-10,-20,
+        -10,  0,  0,  0,  0,  0,  0,-10,
+        -10,  0, 10, 10, 10, 10,  0,-10,
+        -10,  0, 10, 20, 20, 10,  0,-10,
+        -10,  0, 10, 20, 20, 10,  0,-10,
+        -10,  0, 10, 10, 10, 10,  0,-10,
+        -10,  0,  0,  0,  0,  0,  0,-10,
+        -20,-10,-10,-10,-10,-10,-10,-20
+    },
+    {0}, {0}, {0}, {0}, {0}
+};
+
+void init_board_eval(SimdBoard& board) {
+    board.mg_pst_score = 0;
+    board.eg_pst_score = 0;
+    board.game_phase = 0;
     for (int sq = 0; sq < 64; sq++) {
         uint8_t piece = board.squares[sq];
         if (piece != EMPTY_SQUARE) {
             int type = piece & 0x0F;
+            int phase_val = 0;
+            if (type == KNIGHT || type == BISHOP) phase_val = 1;
+            else if (type == ROOK) phase_val = 2;
+            else if (type == QUEEN) phase_val = 4;
+            board.game_phase += phase_val;
+
+            int flipped_sq = (piece & BLACK) ? sq : (sq ^ 56);
+            int mg_val = MG_PST[type][flipped_sq];
+            int eg_val = EG_PST[type][flipped_sq];
+
             if (piece & BLACK) {
-                score -= PST[type][sq];
+                board.mg_pst_score -= mg_val;
+                board.eg_pst_score -= eg_val;
             } else {
-                int flipped_sq = sq ^ 56;
-                score += PST[type][flipped_sq];
+                board.mg_pst_score += mg_val;
+                board.eg_pst_score += eg_val;
             }
         }
     }
-    return score;
+    if (board.game_phase > 24) board.game_phase = 24;
 }
 
 void init_evaluate() {
@@ -116,6 +196,64 @@ int evaluate(const SimdBoard& board, int side_to_move) {
     __m512i ones_16 = _mm512_set1_epi16(1);
     __m512i sum32 = _mm512_madd_epi16(sum16, ones_16);
     int score = _mm512_reduce_add_epi32(sum32) * 100;
+
+    uint64_t w_pawns = board.piece_mask(W_PAWN);
+    uint64_t b_pawns = board.piece_mask(B_PAWN);
+    int pawn_score = 0;
+    for(int f=0; f<8; ++f) {
+        uint64_t file_mask = 0x0101010101010101ULL << f;
+        int w_cnt = __builtin_popcountll(w_pawns & file_mask);
+        int b_cnt = __builtin_popcountll(b_pawns & file_mask);
+        if (w_cnt > 1) pawn_score -= 20 * (w_cnt - 1);
+        if (b_cnt > 1) pawn_score += 20 * (b_cnt - 1);
+        
+        if (w_cnt > 0 && b_cnt == 0) {
+            uint64_t adj_mask = 0;
+            if (f > 0) adj_mask |= (0x0101010101010101ULL << (f - 1));
+            if (f < 7) adj_mask |= (0x0101010101010101ULL << (f + 1));
+            if ((b_pawns & adj_mask) == 0) pawn_score += 30;
+        }
+        if (b_cnt > 0 && w_cnt == 0) {
+            uint64_t adj_mask = 0;
+            if (f > 0) adj_mask |= (0x0101010101010101ULL << (f - 1));
+            if (f < 7) adj_mask |= (0x0101010101010101ULL << (f + 1));
+            if ((w_pawns & adj_mask) == 0) pawn_score -= 30;
+        }
+        
+        if (w_cnt > 0) {
+            uint64_t adj_mask = 0;
+            if (f > 0) adj_mask |= (0x0101010101010101ULL << (f - 1));
+            if (f < 7) adj_mask |= (0x0101010101010101ULL << (f + 1));
+            if ((w_pawns & adj_mask) == 0) pawn_score -= 10;
+        }
+        if (b_cnt > 0) {
+            uint64_t adj_mask = 0;
+            if (f > 0) adj_mask |= (0x0101010101010101ULL << (f - 1));
+            if (f < 7) adj_mask |= (0x0101010101010101ULL << (f + 1));
+            if ((b_pawns & adj_mask) == 0) pawn_score += 10;
+        }
+    }
+    score += pawn_score;
+    
+    uint64_t w_king_mask = board.piece_mask(W_KING);
+    uint64_t b_king_mask = board.piece_mask(B_KING);
+    if (w_king_mask) {
+        int w_king_sq = __builtin_ctzll(w_king_mask);
+        int f = w_king_sq % 8;
+        uint64_t file_mask = 0x0101010101010101ULL << f;
+        if ((w_pawns & file_mask) == 0) score -= 30;
+    }
+    if (b_king_mask) {
+        int b_king_sq = __builtin_ctzll(b_king_mask);
+        int f = b_king_sq % 8;
+        uint64_t file_mask = 0x0101010101010101ULL << f;
+        if ((b_pawns & file_mask) == 0) score += 30;
+    }
+    
+    int phase = board.game_phase;
+    int pst_score = (board.mg_pst_score * phase + board.eg_pst_score * (24 - phase)) / 24;
+    score += pst_score;
+
     if (side_to_move == BLACK) score = -score;
     return score;
 }

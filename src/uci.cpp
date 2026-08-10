@@ -78,8 +78,6 @@ void loop() {
                 current_side = (fen.find(" b ") != std::string::npos) ? BLACK : WHITE;
             }
 
-            board.pst_score = eval_pst(board);
-
             while (iss >> token) {
                 if (token == "moves") {
                     continue;
@@ -94,35 +92,45 @@ void loop() {
                 int to_sq = to_rank * 8 + to_file;
                 
                 uint8_t piece = board.squares[from_sq];
-                uint8_t captured = board.squares[to_sq];
+                
+                if ((piece & 0x0F) == KING) {
+                    if (from_sq == 4 && to_sq == 6) {
+                        board.squares[5] = board.squares[7];
+                        board.squares[7] = EMPTY_SQUARE;
+                    } else if (from_sq == 4 && to_sq == 2) {
+                        board.squares[3] = board.squares[0];
+                        board.squares[0] = EMPTY_SQUARE;
+                    } else if (from_sq == 60 && to_sq == 62) {
+                        board.squares[61] = board.squares[63];
+                        board.squares[63] = EMPTY_SQUARE;
+                    } else if (from_sq == 60 && to_sq == 58) {
+                        board.squares[59] = board.squares[56];
+                        board.squares[56] = EMPTY_SQUARE;
+                    }
+                }
+                
+                if ((piece & 0x0F) == PAWN) {
+                    if (from_file != to_file && board.squares[to_sq] == EMPTY_SQUARE) {
+                        int ep_sq = (current_side == WHITE) ? (to_sq - 8) : (to_sq + 8);
+                        board.squares[ep_sq] = EMPTY_SQUARE;
+                    }
+                }
+                
+                if (token.length() == 5) {
+                    char prom = token[4];
+                    uint8_t color = piece & 0xF0;
+                    if (prom == 'q') piece = color | QUEEN;
+                    else if (prom == 'r') piece = color | ROOK;
+                    else if (prom == 'b') piece = color | BISHOP;
+                    else if (prom == 'n') piece = color | KNIGHT;
+                }
                 
                 board.squares[to_sq] = piece;
                 board.squares[from_sq] = EMPTY_SQUARE;
                 
-                int type = piece & 0x0F;
-                int sq_pst = 0;
-                if (piece & BLACK) {
-                    sq_pst = PST[type][to_sq] - PST[type][from_sq];
-                    board.pst_score -= sq_pst;
-                } else {
-                    int to_flipped = to_sq ^ 56;
-                    int from_flipped = from_sq ^ 56;
-                    sq_pst = PST[type][to_flipped] - PST[type][from_flipped];
-                    board.pst_score += sq_pst;
-                }
-                
-                if (captured != EMPTY_SQUARE) {
-                    int cap_type = captured & 0x0F;
-                    if (captured & BLACK) {
-                        board.pst_score += PST[cap_type][to_sq];
-                    } else {
-                        int to_flipped = to_sq ^ 56;
-                        board.pst_score -= PST[cap_type][to_flipped];
-                    }
-                }
-                
                 current_side = (current_side == WHITE) ? BLACK : WHITE;
             }
+            init_board_eval(board);
         } else if (command == "go") {
             int time_for_move = 1000;
             std::string token;
