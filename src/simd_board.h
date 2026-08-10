@@ -11,9 +11,11 @@ namespace zweidrei {
 
 struct alignas(64) SimdBoard {
     uint8_t squares[64];
+    int pst_score;
 
     SimdBoard() {
         std::memset(squares, EMPTY_SQUARE, 64);
+        pst_score = 0;
     }
 
     void set_fen(const std::string& fen);

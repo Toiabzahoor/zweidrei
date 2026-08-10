@@ -10,20 +10,102 @@ namespace zweidrei {
 
 uint64_t nodes_searched = 0;
 
-int score_move(const Move& move) {
+int get_piece_value(uint8_t piece) {
+    int type = piece & 0x0F;
+    if (type == PAWN) return 100;
+    if (type == KNIGHT || type == BISHOP) return 300;
+    if (type == ROOK) return 500;
+    if (type == QUEEN) return 900;
+    if (type == KING) return 10000;
+    return 0;
+}
+
+int score_move(const Move& move, const SimdBoard& board) {
     if (move.flags() != 0) {
-        return 10000;
+        int target_val = get_piece_value(board.squares[move.to()]);
+        int attacker_val = get_piece_value(board.squares[move.from()]);
+        return 10000 + target_val - attacker_val;
     }
     return 0;
 }
 
-void sort_moves(MoveList& list) {
-    std::sort(list.moves, list.moves + list.size, [](const Move& a, const Move& b) {
-        return score_move(a) > score_move(b);
+void sort_moves(MoveList& list, const SimdBoard& board) {
+    std::sort(list.moves, list.moves + list.size, [&board](const Move& a, const Move& b) {
+        return score_move(a, board) > score_move(b, board);
     });
 }
 
-int alpha_beta(const SimdBoard& board, int side_to_move, int depth, int alpha, int beta) {
+int q_search(const SimdBoard& board, int side_to_move, int alpha, int beta) {
+    nodes_searched++;
+    if ((nodes_searched & 4095) == 0) {
+        if (search_stopped.load(std::memory_order_relaxed)) {
+            return 0;
+        }
+    }
+
+    int stand_pat = evaluate(board, WHITE) + board.pst_score;
+    if (side_to_move == BLACK) stand_pat = -stand_pat;
+    
+    if (stand_pat >= beta) {
+        return beta;
+    }
+    if (alpha < stand_pat) {
+        alpha = stand_pat;
+    }
+
+    MoveList list;
+    generate_captures(board, list, side_to_move);
+    sort_moves(list, board);
+
+    for (int i = 0; i < list.size; ++i) {
+        Move m = list.moves[i];
+        SimdBoard next_board = board;
+        
+        uint8_t piece = next_board.squares[m.from()];
+        uint8_t captured = next_board.squares[m.to()];
+        
+        next_board.squares[m.to()] = piece;
+        next_board.squares[m.from()] = EMPTY_SQUARE;
+        
+        int type = piece & 0x0F;
+        int sq_pst = 0;
+        if (piece & BLACK) {
+            sq_pst = PST[type][m.to()] - PST[type][m.from()];
+            next_board.pst_score -= sq_pst;
+        } else {
+            int to_flipped = m.to() ^ 56;
+            int from_flipped = m.from() ^ 56;
+            sq_pst = PST[type][to_flipped] - PST[type][from_flipped];
+            next_board.pst_score += sq_pst;
+        }
+        
+        if (captured != EMPTY_SQUARE) {
+            int cap_type = captured & 0x0F;
+            if (captured & BLACK) {
+                next_board.pst_score += PST[cap_type][m.to()];
+            } else {
+                int to_flipped = m.to() ^ 56;
+                next_board.pst_score -= PST[cap_type][to_flipped];
+            }
+        }
+        
+        int score = -q_search(next_board, side_to_move == WHITE ? BLACK : WHITE, -beta, -alpha);
+        
+        if (search_stopped.load(std::memory_order_relaxed)) {
+            return 0;
+        }
+
+        if (score >= beta) {
+            return beta;
+        }
+        if (score > alpha) {
+            alpha = score;
+        }
+    }
+    return alpha;
+}
+
+int alpha_beta(const SimdBoard& board, int side_to_move, int depth, int alpha, int beta, bool can_null) {
     nodes_searched++;
     
     if ((nodes_searched & 4095) == 0) {
@@ -41,9 +123,15 @@ int alpha_beta(const SimdBoard& board, int side_to_move, int depth, int alpha, i
     }
 
     if (depth == 0) {
-        int score = evaluate(board, side_to_move);
-        tt_store(key, 0, score, depth, TT_EXACT);
-        return score;
+        return q_search(board, side_to_move, alpha, beta);
+    }
+    
+    if (can_null && depth >= 3) {
+        int R = 2;
+        int null_score = -alpha_beta(board, side_to_move == WHITE ? BLACK : WHITE, depth - 1 - R, -beta, -beta + 1, false);
+        if (null_score >= beta) {
+            return beta;
+        }
     }
 
     MoveList list;
@@ -53,7 +141,7 @@ int alpha_beta(const SimdBoard& board, int side_to_move, int depth, int alpha, i
         return -30000;
     }
 
-    sort_moves(list);
+    sort_moves(list, board);
 
     int best_score = -32000;
     uint16_t best_move = 0;
@@ -64,10 +152,34 @@ int alpha_beta(const SimdBoard& board, int side_to_move, int depth, int alpha, i
         SimdBoard next_board = board;
         
         uint8_t piece = next_board.squares[m.from()];
+        uint8_t captured = next_board.squares[m.to()];
+        
         next_board.squares[m.to()] = piece;
         next_board.squares[m.from()] = EMPTY_SQUARE;
         
-        int score = -alpha_beta(next_board, side_to_move == WHITE ? BLACK : WHITE, depth - 1, -beta, -alpha);
+        int type = piece & 0x0F;
+        int sq_pst = 0;
+        if (piece & BLACK) {
+            sq_pst = PST[type][m.to()] - PST[type][m.from()];
+            next_board.pst_score -= sq_pst;
+        } else {
+            int to_flipped = m.to() ^ 56;
+            int from_flipped = m.from() ^ 56;
+            sq_pst = PST[type][to_flipped] - PST[type][from_flipped];
+            next_board.pst_score += sq_pst;
+        }
+        
+        if (captured != EMPTY_SQUARE) {
+            int cap_type = captured & 0x0F;
+            if (captured & BLACK) {
+                next_board.pst_score += PST[cap_type][m.to()];
+            } else {
+                int to_flipped = m.to() ^ 56;
+                next_board.pst_score -= PST[cap_type][to_flipped];
+            }
+        }
+        
+        int score = -alpha_beta(next_board, side_to_move == WHITE ? BLACK : WHITE, depth - 1, -beta, -alpha, true);
         
         if (search_stopped.load(std::memory_order_relaxed)) {
             return 0;

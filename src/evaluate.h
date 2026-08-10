@@ -9,6 +9,10 @@ namespace zweidrei {
 extern __m512i piece_value_table;
 void init_evaluate();
 int evaluate(const SimdBoard& board, int side_to_move);
+void evaluate_batch_8(const SimdBoard boards[8], const int side_to_move[8], int scores[8]);
+
+extern const int PST[16][64];
+int evaluate_pst(const SimdBoard& board);
 
 }
 #endif

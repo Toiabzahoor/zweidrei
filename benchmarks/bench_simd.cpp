@@ -225,3 +225,26 @@ static void BM_SearchLoop_NoAtomic(benchmark::State& state) {
     }
 }
 BENCHMARK(BM_SearchLoop_NoAtomic);
+
+#include "evaluate.h"
+
+static void BM_EvalBatch8(benchmark::State& state) {
+    SimdBoard boards[8];
+    for (int b = 0; b < 8; b++) {
+        for (int i = 8; i < 16; i++) boards[b].squares[i] = W_PAWN;
+        boards[b].squares[1] = W_KNIGHT; 
+        boards[b].squares[6] = W_KNIGHT;
+    }
+    
+    int side_to_move[8] = { WHITE, BLACK, WHITE, BLACK, WHITE, BLACK, WHITE, BLACK };
+    int scores[8] = {0};
+
+    // Initialize evaluate internals
+    init_evaluate();
+
+    for (auto _ : state) {
+        evaluate_batch_8(boards, side_to_move, scores);
+        benchmark::DoNotOptimize(scores);
+    }
+}
+BENCHMARK(BM_EvalBatch8);
