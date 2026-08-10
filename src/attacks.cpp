@@ -30,7 +30,7 @@ int count_bits(uint64_t bitboard) {
     return count;
 }
 
-uint64_t bishop_attacks_on_the_fly(int sq, uint64_t block) {
+uint64_t calc_bishop_attacks(int sq, uint64_t block) {
     uint64_t attacks = 0ULL;
     int r, f;
     int tr = sq / 8;
@@ -55,7 +55,7 @@ uint64_t bishop_attacks_on_the_fly(int sq, uint64_t block) {
     return attacks;
 }
 
-uint64_t rook_attacks_on_the_fly(int sq, uint64_t block) {
+uint64_t calc_rook_attacks(int sq, uint64_t block) {
     uint64_t attacks = 0ULL;
     int r, f;
     int tr = sq / 8;
@@ -80,7 +80,7 @@ uint64_t rook_attacks_on_the_fly(int sq, uint64_t block) {
     return attacks;
 }
 
-uint64_t mask_bishop_attacks(int sq) {
+uint64_t mask_bishop(int sq) {
     uint64_t attacks = 0ULL;
     int r, f;
     int tr = sq / 8;
@@ -92,7 +92,7 @@ uint64_t mask_bishop_attacks(int sq) {
     return attacks;
 }
 
-uint64_t mask_rook_attacks(int sq) {
+uint64_t mask_rook(int sq) {
     uint64_t attacks = 0ULL;
     int r, f;
     int tr = sq / 8;
@@ -135,8 +135,8 @@ void init_leapers() {
 
 void init_sliders() {
     for (int sq = 0; sq < 64; sq++) {
-        BISHOP_MASKS[sq] = mask_bishop_attacks(sq);
-        ROOK_MASKS[sq] = mask_rook_attacks(sq);
+        BISHOP_MASKS[sq] = mask_bishop(sq);
+        ROOK_MASKS[sq] = mask_rook(sq);
 
         uint64_t bishop_mask = BISHOP_MASKS[sq];
         int bishop_bits = count_bits(bishop_mask);
@@ -144,7 +144,7 @@ void init_sliders() {
         for (int index = 0; index < bishop_indices; index++) {
             uint64_t occupancy = set_occupancy(index, bishop_bits, bishop_mask);
             uint64_t pext_index = _pext_u64(occupancy, bishop_mask);
-            BISHOP_ATTACKS[sq][pext_index] = bishop_attacks_on_the_fly(sq, occupancy);
+            BISHOP_ATTACKS[sq][pext_index] = calc_bishop_attacks(sq, occupancy);
         }
 
         uint64_t rook_mask = ROOK_MASKS[sq];
@@ -153,7 +153,7 @@ void init_sliders() {
         for (int index = 0; index < rook_indices; index++) {
             uint64_t occupancy = set_occupancy(index, rook_bits, rook_mask);
             uint64_t pext_index = _pext_u64(occupancy, rook_mask);
-            ROOK_ATTACKS[sq][pext_index] = rook_attacks_on_the_fly(sq, occupancy);
+            ROOK_ATTACKS[sq][pext_index] = calc_rook_attacks(sq, occupancy);
         }
     }
 }

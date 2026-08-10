@@ -15,10 +15,16 @@ void init_tt(size_t mb) {
 void tt_store(uint64_t key, uint16_t move, int16_t score, uint8_t depth, uint8_t flags) {
     if (TT.empty()) return;
     size_t index = key % TT.size();
-    TT[index].key = key;
-    if (move != 0) {
+    
+    if (TT[index].key != key) {
         TT[index].move = move;
+    } else {
+        if (move != 0) {
+            TT[index].move = move;
+        }
     }
+    
+    TT[index].key = key;
     TT[index].score = score;
     TT[index].depth = depth;
     TT[index].flags = flags;
@@ -46,6 +52,15 @@ bool tt_probe(uint64_t key, uint8_t depth, int16_t alpha, int16_t beta, int16_t&
         }
     }
     return false;
+}
+
+uint16_t tt_probe_move(uint64_t key) {
+    if (TT.empty()) return 0;
+    size_t index = key % TT.size();
+    if (TT[index].key == key) {
+        return TT[index].move;
+    }
+    return 0;
 }
 
 }

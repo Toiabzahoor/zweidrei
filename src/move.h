@@ -8,6 +8,8 @@ namespace zweidrei {
 class Move {
     uint16_t data;
 public:
+    int16_t score = 0;
+
     Move() : data(0) {}
     Move(uint16_t d) : data(d) {}
     Move(uint16_t from, uint16_t to, uint16_t flags) {

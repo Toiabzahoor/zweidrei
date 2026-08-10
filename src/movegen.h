@@ -6,8 +6,8 @@
 
 namespace zweidrei {
 
-void generate_moves(const SimdBoard& board, MoveList& list, uint8_t color);
-void generate_captures(const SimdBoard& board, MoveList& list, uint8_t color);
+void gen_moves(const SimdBoard& board, MoveList& list, uint8_t color);
+void gen_captures(const SimdBoard& board, MoveList& list, uint8_t color);
 
 }
 

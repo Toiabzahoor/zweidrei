@@ -33,13 +33,13 @@ struct alignas(64) SimdBoard {
         return _mm512_load_si512((void const*)squares);
     }
 
-    inline uint64_t get_piece_mask(uint8_t piece) const {
+    inline uint64_t piece_mask(uint8_t piece) const {
         __m512i board_vec = load();
         __m512i piece_vec = _mm512_set1_epi8(piece);
         return _mm512_cmpeq_epi8_mask(board_vec, piece_vec);
     }
 
-    inline uint64_t get_white_pieces_mask() const {
+    inline uint64_t white_mask() const {
         __m512i board_vec = load();
         __m512i max_w = _mm512_set1_epi8(W_KING);
         __m512i min_w = _mm512_set1_epi8(W_PAWN);

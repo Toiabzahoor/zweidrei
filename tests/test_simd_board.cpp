@@ -16,10 +16,10 @@ TEST(SimdBoardTest, GetPieceMask) {
     board.put_piece(SQ_D4, B_PAWN);
     board.put_piece(SQ_E5, W_PAWN);
     
-    uint64_t wp_mask = board.get_piece_mask(W_PAWN);
+    uint64_t wp_mask = board.piece_mask(W_PAWN);
     EXPECT_EQ(wp_mask, (1ULL << SQ_E4) | (1ULL << SQ_E5));
     
-    uint64_t bp_mask = board.get_piece_mask(B_PAWN);
+    uint64_t bp_mask = board.piece_mask(B_PAWN);
     EXPECT_EQ(bp_mask, (1ULL << SQ_D4));
 }
 
@@ -29,6 +29,6 @@ TEST(SimdBoardTest, GetWhitePiecesMask) {
     board.put_piece(SQ_F4, W_KNIGHT);
     board.put_piece(SQ_D5, B_PAWN);
     
-    uint64_t white_mask = board.get_white_pieces_mask();
+    uint64_t white_mask = board.white_mask();
     EXPECT_EQ(white_mask, (1ULL << SQ_E4) | (1ULL << SQ_F4));
 }

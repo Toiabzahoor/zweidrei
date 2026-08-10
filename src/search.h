@@ -11,8 +11,12 @@ namespace zweidrei {
 
 extern uint64_t nodes_searched;
 
-void search(const SimdBoard& board, int side_to_move, int depth_limit = 64);
-int alpha_beta(const SimdBoard& board, int side_to_move, int depth, int alpha, int beta, bool can_null = true);
+extern uint16_t killer_moves[64][2];
+extern int history_table[2][64][64];
+
+void search(const SimdBoard& board, int side_to_move, int depth_limit = 64, int time_limit_ms = 0);
+int alpha_beta(const SimdBoard& board, int side_to_move, int depth, int alpha, int beta, int ply, bool can_null = true, const uint16_t* excluded_moves = nullptr, int num_excluded = 0);
+void reset_search();
 
 }
 #endif

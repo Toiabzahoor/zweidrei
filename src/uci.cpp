@@ -3,6 +3,7 @@
 #include "movegen.h"
 #include "search.h"
 #include "evaluate.h"
+#include "tt.h"
 #include <iostream>
 #include <string>
 #include <sstream>
@@ -15,9 +16,10 @@ std::atomic<bool> search_stopped(false);
 std::thread search_thread;
 
 int current_side = WHITE;
+int multipv_limit = 1;
 
-void search_worker(SimdBoard board) {
-    search(board, current_side, 6);
+void search_worker(SimdBoard board, int time_limit_ms) {
+    search(board, current_side, 64, time_limit_ms);
 }
 
 namespace UCI {
@@ -38,12 +40,28 @@ void loop() {
         if (command == "uci") {
             std::cout << "id name Zweidrei" << std::endl;
             std::cout << "id author toiabzahoor" << std::endl;
+            std::cout << "option name MultiPV type spin default 1 min 1 max 500" << std::endl;
             std::cout << "uciok" << std::endl;
         } else if (command == "isready") {
             std::cout << "readyok" << std::endl;
+        } else if (command == "setoption") {
+            std::string token;
+            iss >> token;
+            if (token == "name") {
+                std::string name;
+                iss >> name;
+                if (name == "MultiPV") {
+                    iss >> token;
+                    int val;
+                    if (iss >> val) {
+                        multipv_limit = val;
+                    }
+                }
+            }
         } else if (command == "ucinewgame") {
             board.set_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
             current_side = WHITE;
+            init_tt(16);
         } else if (command == "position") {
             std::string token;
             iss >> token;
@@ -60,7 +78,7 @@ void loop() {
                 current_side = (fen.find(" b ") != std::string::npos) ? BLACK : WHITE;
             }
 
-            board.pst_score = evaluate_pst(board);
+            board.pst_score = eval_pst(board);
 
             while (iss >> token) {
                 if (token == "moves") {
@@ -106,11 +124,24 @@ void loop() {
                 current_side = (current_side == WHITE) ? BLACK : WHITE;
             }
         } else if (command == "go") {
+            int time_for_move = 1000;
+            std::string token;
+            while (iss >> token) {
+                if (token == "wtime" && current_side == WHITE) {
+                    int wtime; iss >> wtime; time_for_move = wtime / 40;
+                } else if (token == "btime" && current_side == BLACK) {
+                    int btime; iss >> btime; time_for_move = btime / 40;
+                } else if (token == "movetime") {
+                    iss >> time_for_move;
+                }
+            }
+            if (time_for_move < 50) time_for_move = 50;
+
             search_stopped.store(false);
             if (search_thread.joinable()) {
                 search_thread.join();
             }
-            search_thread = std::thread(search_worker, board);
+            search_thread = std::thread(search_worker, board, time_for_move);
         } else if (command == "stop") {
             search_stopped.store(true);
             if (search_thread.joinable()) {

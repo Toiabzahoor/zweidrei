@@ -11,7 +11,7 @@ extern uint64_t ZobristKeys[64][256];
 extern uint64_t ZobristSide;
 
 void init_zobrist();
-uint64_t get_zobrist_key(const SimdBoard& board, int side_to_move);
+uint64_t get_zkey(const SimdBoard& board, int side_to_move);
 
 }
 #endif

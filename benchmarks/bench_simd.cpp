@@ -10,7 +10,7 @@ static void BM_SimdPieceMask(benchmark::State& state) {
     board.put_piece(SQ_A1, W_ROOK);
     
     for (auto _ : state) {
-        benchmark::DoNotOptimize(board.get_piece_mask(W_PAWN));
+        benchmark::DoNotOptimize(board.piece_mask(W_PAWN));
     }
 }
 BENCHMARK(BM_SimdPieceMask);
@@ -21,7 +21,7 @@ static void BM_SimdWhiteMask(benchmark::State& state) {
     board.put_piece(SQ_D4, B_PAWN);
     
     for (auto _ : state) {
-        benchmark::DoNotOptimize(board.get_white_pieces_mask());
+        benchmark::DoNotOptimize(board.white_mask());
     }
 }
 BENCHMARK(BM_SimdWhiteMask);
@@ -42,7 +42,7 @@ static void BM_GenerateMoves(benchmark::State& state) {
     
     for (auto _ : state) {
         MoveList list;
-        generate_moves(board, list, WHITE);
+        gen_moves(board, list, WHITE);
         benchmark::DoNotOptimize(list);
     }
 }
@@ -62,7 +62,7 @@ static void BM_EvalBitboard(benchmark::State& state) {
             uint64_t bb = bitboards[p];
             while (bb) {
                 int sq = __builtin_ctzll(bb);
-                score += piece_values[p]; // Simplified evaluation
+                score += piece_values[p];
                 bb &= bb - 1;
             }
         }
@@ -94,8 +94,6 @@ static void BM_EvalAVX512(benchmark::State& state) {
     for (int i=8; i<16; i++) board.squares[i] = W_PAWN;
     board.squares[1] = W_KNIGHT; board.squares[6] = W_KNIGHT;
     
-    // Lookup table for piece values (Empty=0, Pawn=1, Knight=3, Bishop=3, Rook=5, Queen=9)
-    // Placed in a 16-byte block, then broadcast across the 64-byte register
     alignas(64) uint8_t table[64];
     for(int i=0; i<64; i++) {
         int type = i % 16;
@@ -113,24 +111,18 @@ static void BM_EvalAVX512(benchmark::State& state) {
     for (auto _ : state) {
         __m512i b = board.load();
         
-        // 1. Mask out colors to get just the piece type (0-15)
         __m512i types = _mm512_and_si512(b, type_mask);
         
-        // 2. Instantly look up all 64 piece values simultaneously
         __m512i abs_values = _mm512_shuffle_epi8(value_table, types);
         
-        // 3. Find which pieces are black
         __mmask64 is_black = _mm512_test_epi8_mask(b, black_flag);
         
-        // 4. Split into white values and black values
         __m512i white_vals = _mm512_mask_blend_epi8(is_black, abs_values, zero);
         __m512i black_vals = _mm512_mask_blend_epi8(is_black, zero, abs_values);
         
-        // 5. Horizontally sum the 8-bit values into 64-bit blocks
         __m512i w_sums = _mm512_sad_epu8(white_vals, zero);
         __m512i b_sums = _mm512_sad_epu8(black_vals, zero);
         
-        // 6. Reduce the 64-bit blocks into a single integer
         int white_total = _mm512_reduce_add_epi64(w_sums);
         int black_total = _mm512_reduce_add_epi64(b_sums);
         
@@ -163,22 +155,16 @@ static void BM_EvalAVX512_Optimized(benchmark::State& state) {
     for (auto _ : state) {
         __m512i b = board.load();
         
-        // 1. vpshufb natively ignores bit 4, so 0x01 (W) and 0x11 (B) both map to index 1!
         __m512i abs_values = _mm512_shuffle_epi8(value_table, b);
         
-        // 2. Identify black pieces
         __mmask64 is_black = _mm512_test_epi8_mask(b, black_flag);
         
-        // 3. Negate black pieces inline using mask_sub (0 - abs_values)
         __m512i signed_values = _mm512_mask_sub_epi8(abs_values, is_black, zero, abs_values);
         
-        // 4. Multiply-add 8-bit signed to 16-bit signed
         __m512i sum16 = _mm512_maddubs_epi16(ones_8, signed_values);
         
-        // 5. Multiply-add 16-bit signed to 32-bit signed
         __m512i sum32 = _mm512_madd_epi16(sum16, ones_16);
         
-        // 6. Horizontal sum and scale
         int score = _mm512_reduce_add_epi32(sum32) * 100;
         benchmark::DoNotOptimize(score);
     }
@@ -239,11 +225,10 @@ static void BM_EvalBatch8(benchmark::State& state) {
     int side_to_move[8] = { WHITE, BLACK, WHITE, BLACK, WHITE, BLACK, WHITE, BLACK };
     int scores[8] = {0};
 
-    // Initialize evaluate internals
     init_evaluate();
 
     for (auto _ : state) {
-        evaluate_batch_8(boards, side_to_move, scores);
+        eval_batch(boards, side_to_move, scores);
         benchmark::DoNotOptimize(scores);
     }
 }

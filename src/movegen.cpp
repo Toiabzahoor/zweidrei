@@ -13,23 +13,23 @@ inline int pop_lsb(uint64_t& bb) {
     return s;
 }
 
-void generate_moves(const SimdBoard& board, MoveList& list, uint8_t color) {
-    uint64_t wp = board.get_piece_mask(color | PAWN);
-    uint64_t wn = board.get_piece_mask(color | KNIGHT);
-    uint64_t wb = board.get_piece_mask(color | BISHOP);
-    uint64_t wr = board.get_piece_mask(color | ROOK);
-    uint64_t wq = board.get_piece_mask(color | QUEEN);
-    uint64_t wk = board.get_piece_mask(color | KING);
+void gen_moves(const SimdBoard& board, MoveList& list, uint8_t color) {
+    uint64_t wp = board.piece_mask(color | PAWN);
+    uint64_t wn = board.piece_mask(color | KNIGHT);
+    uint64_t wb = board.piece_mask(color | BISHOP);
+    uint64_t wr = board.piece_mask(color | ROOK);
+    uint64_t wq = board.piece_mask(color | QUEEN);
+    uint64_t wk = board.piece_mask(color | KING);
 
     uint64_t us_mask = wp | wn | wb | wr | wq | wk;
     
     uint64_t op_color = (color == WHITE) ? BLACK : WHITE;
-    uint64_t bp = board.get_piece_mask(op_color | PAWN);
-    uint64_t bn = board.get_piece_mask(op_color | KNIGHT);
-    uint64_t bb = board.get_piece_mask(op_color | BISHOP);
-    uint64_t br = board.get_piece_mask(op_color | ROOK);
-    uint64_t bq = board.get_piece_mask(op_color | QUEEN);
-    uint64_t bk = board.get_piece_mask(op_color | KING);
+    uint64_t bp = board.piece_mask(op_color | PAWN);
+    uint64_t bn = board.piece_mask(op_color | KNIGHT);
+    uint64_t bb = board.piece_mask(op_color | BISHOP);
+    uint64_t br = board.piece_mask(op_color | ROOK);
+    uint64_t bq = board.piece_mask(op_color | QUEEN);
+    uint64_t bk = board.piece_mask(op_color | KING);
 
     uint64_t them_mask = bp | bn | bb | br | bq | bk;
     uint64_t occupancy = us_mask | them_mask;
@@ -98,23 +98,23 @@ void generate_moves(const SimdBoard& board, MoveList& list, uint8_t color) {
     }
 }
 
-void generate_captures(const SimdBoard& board, MoveList& list, uint8_t color) {
-    uint64_t wp = board.get_piece_mask(color | PAWN);
-    uint64_t wn = board.get_piece_mask(color | KNIGHT);
-    uint64_t wb = board.get_piece_mask(color | BISHOP);
-    uint64_t wr = board.get_piece_mask(color | ROOK);
-    uint64_t wq = board.get_piece_mask(color | QUEEN);
-    uint64_t wk = board.get_piece_mask(color | KING);
+void gen_captures(const SimdBoard& board, MoveList& list, uint8_t color) {
+    uint64_t wp = board.piece_mask(color | PAWN);
+    uint64_t wn = board.piece_mask(color | KNIGHT);
+    uint64_t wb = board.piece_mask(color | BISHOP);
+    uint64_t wr = board.piece_mask(color | ROOK);
+    uint64_t wq = board.piece_mask(color | QUEEN);
+    uint64_t wk = board.piece_mask(color | KING);
 
     uint64_t us_mask = wp | wn | wb | wr | wq | wk;
     
     uint64_t op_color = (color == WHITE) ? BLACK : WHITE;
-    uint64_t bp = board.get_piece_mask(op_color | PAWN);
-    uint64_t bn = board.get_piece_mask(op_color | KNIGHT);
-    uint64_t bb = board.get_piece_mask(op_color | BISHOP);
-    uint64_t br = board.get_piece_mask(op_color | ROOK);
-    uint64_t bq = board.get_piece_mask(op_color | QUEEN);
-    uint64_t bk = board.get_piece_mask(op_color | KING);
+    uint64_t bp = board.piece_mask(op_color | PAWN);
+    uint64_t bn = board.piece_mask(op_color | KNIGHT);
+    uint64_t bb = board.piece_mask(op_color | BISHOP);
+    uint64_t br = board.piece_mask(op_color | ROOK);
+    uint64_t bq = board.piece_mask(op_color | QUEEN);
+    uint64_t bk = board.piece_mask(op_color | KING);
 
     uint64_t them_mask = bp | bn | bb | br | bq | bk;
     uint64_t occupancy = us_mask | them_mask;

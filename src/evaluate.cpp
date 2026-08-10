@@ -73,7 +73,7 @@ const int PST[16][64] = {
     {0}, {0}, {0}, {0}, {0}
 };
 
-int evaluate_pst(const SimdBoard& board) {
+int eval_pst(const SimdBoard& board) {
     int score = 0;
     for (int sq = 0; sq < 64; sq++) {
         uint8_t piece = board.squares[sq];
@@ -120,7 +120,7 @@ int evaluate(const SimdBoard& board, int side_to_move) {
     return score;
 }
 
-void evaluate_batch_8(const SimdBoard boards[8], const int side_to_move[8], int scores[8]) {
+void eval_batch(const SimdBoard boards[8], const int side_to_move[8], int scores[8]) {
     __m512i b0 = boards[0].load();
     __m512i b1 = boards[1].load();
     __m512i b2 = boards[2].load();

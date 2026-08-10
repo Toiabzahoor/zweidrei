@@ -16,7 +16,7 @@ void init_zobrist() {
     ZobristSide = rng();
 }
 
-uint64_t get_zobrist_key(const SimdBoard& board, int side_to_move) {
+uint64_t get_zkey(const SimdBoard& board, int side_to_move) {
     uint64_t key = 0;
     for (int i = 0; i < 64; ++i) {
         uint8_t piece = board.squares[i];
