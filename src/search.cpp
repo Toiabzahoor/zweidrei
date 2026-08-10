@@ -43,21 +43,23 @@ inline void make_move(SimdBoard& next_board, Move m, uint8_t side_to_move) {
         next_board.ep_square = (m.from() + m.to()) / 2;
     }
     
-    bool is_castling = false;
+    bool needs_full_eval = false;
     
-    if (type == KING && std::abs((int)m.to() - (int)m.from()) == 2) {
-        is_castling = true;
-        if (m.to() == SQ_G1) { next_board.squares[SQ_F1] = next_board.squares[SQ_H1]; next_board.squares[SQ_H1] = EMPTY_SQUARE; }
-        else if (m.to() == SQ_C1) { next_board.squares[SQ_D1] = next_board.squares[SQ_A1]; next_board.squares[SQ_A1] = EMPTY_SQUARE; }
-        else if (m.to() == SQ_G8) { next_board.squares[SQ_F8] = next_board.squares[SQ_H8]; next_board.squares[SQ_H8] = EMPTY_SQUARE; }
-        else if (m.to() == SQ_C8) { next_board.squares[SQ_D8] = next_board.squares[SQ_A8]; next_board.squares[SQ_A8] = EMPTY_SQUARE; }
+    if (type == KING) {
+        needs_full_eval = true;
+        if (std::abs((int)m.to() - (int)m.from()) == 2) {
+            if (m.to() == SQ_G1) { next_board.squares[SQ_F1] = next_board.squares[SQ_H1]; next_board.squares[SQ_H1] = EMPTY_SQUARE; }
+            else if (m.to() == SQ_C1) { next_board.squares[SQ_D1] = next_board.squares[SQ_A1]; next_board.squares[SQ_A1] = EMPTY_SQUARE; }
+            else if (m.to() == SQ_G8) { next_board.squares[SQ_F8] = next_board.squares[SQ_H8]; next_board.squares[SQ_H8] = EMPTY_SQUARE; }
+            else if (m.to() == SQ_C8) { next_board.squares[SQ_D8] = next_board.squares[SQ_A8]; next_board.squares[SQ_A8] = EMPTY_SQUARE; }
+        }
     }
     
     
     if (type == PAWN && m.to() == old_ep) {
         int captured_sq = (side_to_move == WHITE) ? (m.to() - 8) : (m.to() + 8);
         next_board.squares[captured_sq] = EMPTY_SQUARE;
-        is_castling = true; 
+        needs_full_eval = true; 
     }
     
     next_board.squares[m.to()] = piece;
@@ -67,10 +69,10 @@ inline void make_move(SimdBoard& next_board, Move m, uint8_t side_to_move) {
     if (m.flags() & 2) { 
         uint8_t color = piece & 0xF0;
         next_board.squares[m.to()] = color | QUEEN;
-        is_castling = true; 
+        needs_full_eval = true; 
     }
     
-    if (is_castling) {
+    if (needs_full_eval) {
         init_board_eval(next_board);
         return;
     }

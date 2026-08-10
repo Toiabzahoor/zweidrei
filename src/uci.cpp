@@ -125,6 +125,18 @@ void loop() {
                     else if (prom == 'n') piece = color | KNIGHT;
                 }
                 
+                if (from_sq == 4 || to_sq == 4) board.castling_rights &= ~3;
+                if (from_sq == 60 || to_sq == 60) board.castling_rights &= ~12;
+                if (from_sq == 7 || to_sq == 7) board.castling_rights &= ~1;
+                if (from_sq == 0 || to_sq == 0) board.castling_rights &= ~2;
+                if (from_sq == 63 || to_sq == 63) board.castling_rights &= ~4;
+                if (from_sq == 56 || to_sq == 56) board.castling_rights &= ~8;
+                
+                board.ep_square = 64;
+                if ((piece & 0x0F) == PAWN && std::abs(from_rank - to_rank) == 2) {
+                    board.ep_square = (from_sq + to_sq) / 2;
+                }
+                
                 board.squares[to_sq] = piece;
                 board.squares[from_sq] = EMPTY_SQUARE;
                 

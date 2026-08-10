@@ -15,7 +15,9 @@ int main() {
     init_zobrist();
     init_tt(16);
     init_evaluate();
-    nnue::load_network("nn-62ef826d1a6d.nnue");
+    if (!nnue::load_network("nn-62ef826d1a6d.nnue")) {
+        nnue::load_network("C:\\Users\\DELL\\Programming\\Workspaces\\zweidrei\\nn-62ef826d1a6d.nnue");
+    }
     UCI::loop();
     return 0;
 }
