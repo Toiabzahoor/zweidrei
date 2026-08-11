@@ -22,3 +22,4 @@ find_package(Threads REQUIRED)
 
 add_executable(zweidrei main.cpp)
 target_link_libraries(zweidrei PRIVATE zweidrei_core Threads::Threads)
+target_link_options(zweidrei PRIVATE -static)
