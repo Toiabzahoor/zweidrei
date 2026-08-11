@@ -324,7 +324,7 @@ int alpha_beta(const SimdBoard& board, int side_to_move, int depth, int alpha, i
 
         if (score > best_score) {
             best_score = score;
-            best_move = (m.from() << 6) | m.to();
+            best_move = m.value();
         }
         
         if (score > alpha) {
@@ -335,7 +335,7 @@ int alpha_beta(const SimdBoard& board, int side_to_move, int depth, int alpha, i
         if (alpha >= beta) {
             tt_store(key, best_move, beta, depth, TT_BETA);
             if (m.flags() == 0) {
-                uint16_t val = (m.from() << 6) | m.to();
+                uint16_t val = m.value();
                 int safe_ply = std::min(ply, 63);
                 if (killer_moves[safe_ply][0] != val) {
                     killer_moves[safe_ply][1] = killer_moves[safe_ply][0];
@@ -380,22 +380,28 @@ void extract_pv(const SimdBoard& board, int side_to_move, int depth, std::vector
         
         pv.push_back(move);
         
-        int from = move >> 6;
+        int from = (move >> 6) & 0x3F;
         int to = move & 0x3F;
-        current_board.squares[to] = current_board.squares[from];
-        current_board.squares[from] = EMPTY_SQUARE;
+        int flags = move >> 12;
+        Move m(from, to, flags);
+        
+        make_move(current_board, m, current_side);
         current_side = (current_side == WHITE) ? BLACK : WHITE;
     }
 }
 
 void print_move(uint16_t m) {
-    int from = m >> 6;
+    int from = (m >> 6) & 0x3F;
     int to = m & 0x3F;
+    int flags = m >> 12;
     char f_f = 'a' + (from % 8);
     char f_r = '1' + (from / 8);
     char t_f = 'a' + (to % 8);
     char t_r = '1' + (to / 8);
     std::cout << f_f << f_r << t_f << t_r;
+    if (flags & 2) { 
+        std::cout << "q"; 
+    }
 }
 
 void search(const SimdBoard& board, int side_to_move, int depth_limit, int time_limit_ms) {

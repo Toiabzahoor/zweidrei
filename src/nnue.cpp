@@ -129,7 +129,7 @@ int make_halfkp_index(int perspective, int king_sq, int sq, int piece_type, int 
     int k_sq = (perspective == 1) ? king_sq ^ 63 : king_sq;
     int s_sq = (perspective == 1) ? sq ^ 63 : sq;
     int p_color = (piece_color == perspective) ? 0 : 1;
-    int p_idx = p_color * 5 + (piece_type - 1);
+    int p_idx = (piece_type - 1) * 2 + p_color;
     return k_sq * 641 + 1 + p_idx * 64 + s_sq;
 }
 
