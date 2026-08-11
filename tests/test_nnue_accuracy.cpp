@@ -1,9 +1,9 @@
-#include "../src/simd_board.h"
-#include "../src/evaluate.h"
-#include "../src/nnue.h"
-#include "../src/attacks.h"
-#include "../src/search.h"
-#include "../src/move.h"
+#include "simd_board.h"
+#include "evaluate.h"
+#include "nnue.h"
+#include "attacks.h"
+#include "search.h"
+#include "move.h"
 #include <iostream>
 
 using namespace zweidrei;

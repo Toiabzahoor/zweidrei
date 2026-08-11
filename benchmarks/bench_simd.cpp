@@ -1,6 +1,6 @@
 #include <benchmark/benchmark.h>
 #include "simd_board.h"
-#include "../src/evaluate.h"
+#include "evaluate.h"
 using namespace zweidrei;
 
 static void BM_SimdPieceMask(benchmark::State& state) {
@@ -223,8 +223,8 @@ static void BM_SearchLoop_NoAtomic(benchmark::State& state) {
 }
 BENCHMARK(BM_SearchLoop_NoAtomic);
 
-#include "../src/evaluate.h"
-#include "../src/search.h"
+#include "evaluate.h"
+#include "search.h"
 
 static void BM_EvalBatch8(benchmark::State& state) {
     SimdBoard boards[8];
