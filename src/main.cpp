@@ -4,6 +4,7 @@
 #include "tt.h"
 #include "evaluate.h"
 #include "nnue.h"
+#include "search.h"
 
 using namespace zweidrei;
 
@@ -15,6 +16,7 @@ int main() {
     init_zobrist();
     init_tt(16);
     init_evaluate();
+    init_search();
     if (!nnue::load_network("nn-62ef826d1a6d.nnue")) {
         nnue::load_network("C:\\Users\\DELL\\Programming\\Workspaces\\zweidrei\\nn-62ef826d1a6d.nnue");
     }

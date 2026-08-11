@@ -212,7 +212,8 @@ static void BM_SearchLoop_NoAtomic(benchmark::State& state) {
 }
 BENCHMARK(BM_SearchLoop_NoAtomic);
 
-#include "evaluate.h"
+#include "../src/evaluate.h"
+#include "../src/search.h"
 
 static void BM_EvalBatch8(benchmark::State& state) {
     SimdBoard boards[8];
@@ -226,6 +227,7 @@ static void BM_EvalBatch8(benchmark::State& state) {
     int scores[8] = {0};
 
     init_evaluate();
+    init_search();
 
     for (auto _ : state) {
         evaluate_batch(boards, side_to_move, scores);

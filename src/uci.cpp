@@ -4,6 +4,7 @@
 #include "search.h"
 #include "evaluate.h"
 #include "tt.h"
+#include "zobrist.h"
 #include <iostream>
 #include <string>
 #include <sstream>
@@ -63,6 +64,7 @@ void loop() {
             current_side = WHITE;
             init_tt(16);
         } else if (command == "position") {
+            game_history_ply = 0;
             std::string token;
             iss >> token;
             if (token == "startpos") {
@@ -78,6 +80,8 @@ void loop() {
                 current_side = (fen.find(" b ") != std::string::npos) ? BLACK : WHITE;
             }
 
+            game_history[game_history_ply++] = get_zkey(board, current_side);
+            
             while (iss >> token) {
                 if (token == "moves") {
                     continue;
@@ -141,6 +145,7 @@ void loop() {
                 board.squares[from_sq] = EMPTY_SQUARE;
                 
                 current_side = (current_side == WHITE) ? BLACK : WHITE;
+                game_history[game_history_ply++] = get_zkey(board, current_side);
             }
             init_board_eval(board);
         } else if (command == "go") {
