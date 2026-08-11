@@ -1,4 +1,4 @@
-add_executable(zweidrei_tests test_simd_board.cpp test_movegen.cpp)
+add_executable(zweidrei_tests test_simd_board.cpp test_movegen.cpp test_nnue_accuracy.cpp)
 target_link_libraries(zweidrei_tests PRIVATE zweidrei_core gtest_main)
 
 include(GoogleTest)

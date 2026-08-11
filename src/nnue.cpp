@@ -88,7 +88,7 @@ int evaluate(const int16_t *white_acc, const int16_t *black_acc,
     _mm256_store_si256((__m256i *)(input_features + HIDDEN_L1 + i), them8);
   }
 
-  alignas(64) int32_t fc1_out[HIDDEN_L2];
+  alignas(64) uint8_t fc1_out[HIDDEN_L2];
   for (int i = 0; i < HIDDEN_L2; i++) {
     __m512i sum0 = _mm512_setzero_si512();
     __m512i sum1 = _mm512_setzero_si512();
@@ -115,22 +115,25 @@ int evaluate(const int16_t *white_acc, const int16_t *black_acc,
     sum2 = _mm512_add_epi32(sum2, sum3);
     sum0 = _mm512_add_epi32(sum0, sum2);
     int32_t total_sum = _mm512_reduce_add_epi32(sum0) + fc1_biases[i];
-    fc1_out[i] = std::max(0, std::min(127, total_sum >> 6));
+    fc1_out[i] = (uint8_t)std::max(0, std::min(127, total_sum >> 6));
   }
 
-  alignas(64) int32_t fc2_out[HIDDEN_L3];
+  alignas(64) uint8_t fc2_out[HIDDEN_L3];
+  __m256i in2 = _mm256_load_si256((const __m256i*)fc1_out);
   for (int i = 0; i < HIDDEN_L3; i++) {
-    int32_t sum = fc2_biases[i];
-    for (int j = 0; j < HIDDEN_L2; j++) {
-      sum += fc1_out[j] * fc2_weights[i][j];
-    }
-    fc2_out[i] = std::max(0, std::min(127, sum >> 6));
+    __m256i w2 = _mm256_load_si256((const __m256i*)fc2_weights[i]);
+    __m256i sum2 = _mm256_dpbusd_epi32(_mm256_setzero_si256(), in2, w2);
+    __m512i sum512_2 = _mm512_zextsi256_si512(sum2);
+    int32_t total_sum = _mm512_reduce_add_epi32(sum512_2) + fc2_biases[i];
+    fc2_out[i] = (uint8_t)std::max(0, std::min(127, total_sum >> 6));
   }
 
-  int32_t final_out = output_biases[0];
-  for (int j = 0; j < HIDDEN_L3; j++) {
-    final_out += fc2_out[j] * output_weights[0][j];
-  }
+  __m256i in3 = _mm256_load_si256((const __m256i*)fc2_out);
+  __m256i w3 = _mm256_load_si256((const __m256i*)output_weights[0]);
+  __m256i sum3 = _mm256_dpbusd_epi32(_mm256_setzero_si256(), in3, w3);
+  
+  __m512i sum512_3 = _mm512_zextsi256_si512(sum3);
+  int32_t final_out = _mm512_reduce_add_epi32(sum512_3) + output_biases[0];
 
   return final_out / 16;
 }

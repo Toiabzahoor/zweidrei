@@ -308,9 +308,17 @@ int alpha_beta(const SimdBoard &board, int side_to_move, int depth, int alpha,
     }
   }
 
-  if (depth <= 2 && can_null && ply > 0 && !in_check) {
+  if (depth <= 6 && can_null && ply > 0 && !in_check) {
     int static_eval = evaluate(board, side_to_move);
-    if (static_eval + depth * 150 < alpha) {
+    int margin = 120 + depth * 80;
+    
+    // Reverse Futility Pruning (Static Null Move Pruning)
+    if (static_eval - margin >= beta) {
+      return static_eval;
+    }
+    
+    // Futility Pruning
+    if (static_eval + margin < alpha) {
       return q_search(board, side_to_move, alpha, beta, ply);
     }
   }

@@ -1,6 +1,6 @@
 #include <benchmark/benchmark.h>
 #include "simd_board.h"
-
+#include "../src/evaluate.h"
 using namespace zweidrei;
 
 static void BM_SimdPieceMask(benchmark::State& state) {
@@ -172,6 +172,17 @@ static void BM_EvalAVX512_Optimized(benchmark::State& state) {
 BENCHMARK(BM_EvalAVX512_Optimized);
 
 #include "uci.h"
+
+static void BM_EvalNNUE(benchmark::State& state) {
+    SimdBoard board;
+    board.set_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    init_board_eval(board);
+    for (auto _ : state) {
+        int eval = evaluate(board, zweidrei::WHITE);
+        benchmark::DoNotOptimize(eval);
+    }
+}
+BENCHMARK(BM_EvalNNUE);
 
 static void BM_SearchLoop_NaiveAtomic(benchmark::State& state) {
     for (auto _ : state) {
