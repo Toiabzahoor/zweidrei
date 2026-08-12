@@ -147,5 +147,5 @@ int make_halfkp_index(int perspective, int king_sq, int sq, int piece_type,
   return k_sq * 641 + 1 + p_idx * 64 + s_sq;
 }
 
-} // namespace nnue
-} // namespace zweidrei
+} 
+} 

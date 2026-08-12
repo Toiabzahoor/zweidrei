@@ -2,6 +2,7 @@
 #include "attacks.h"
 #include "nnue.h"
 #include <immintrin.h>
+#include <bit>
 
 namespace zweidrei {
 
@@ -189,6 +190,18 @@ void init_evaluate() {
 }
 
 int evaluate(const SimdBoard& board, int side_to_move) {
+    uint64_t occupancy = board.occupancy_mask();
+    int pop_count = std::popcount(occupancy);
+
+    if (pop_count == 2) {
+        return 0;
+    } else if (pop_count == 3) {
+        if (board.piece_mask(W_KNIGHT) | board.piece_mask(B_KNIGHT) | 
+            board.piece_mask(W_BISHOP) | board.piece_mask(B_BISHOP)) {
+            return 0;
+        }
+    }
+
     int score = nnue::evaluate(board.white_acc, board.black_acc, side_to_move);
     return score;
 }

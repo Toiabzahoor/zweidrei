@@ -14,12 +14,14 @@
 namespace zweidrei {
 
 std::atomic<bool> search_stopped(false);
+std::atomic<bool> is_pondering(false);
 std::vector<std::thread> search_threads;
 
 int current_side = WHITE;
 int multipv_limit = 1;
 int num_threads = 1;
 int hash_size = 256;
+int max_depth_limit = 16;
 
 void search_worker(SimdBoard board, int time_limit_ms, int thread_id) {
     search(board, current_side, 64, time_limit_ms, thread_id);
@@ -47,6 +49,7 @@ void loop() {
             std::cout << "option name MultiPV type spin default 1 min 1 max 500" << std::endl;
             std::cout << "option name Threads type spin default 1 min 1 max 128" << std::endl;
             std::cout << "option name Hash type spin default 256 min 1 max 65536" << std::endl;
+            std::cout << "option name MaxDepth type spin default 16 min 1 max 64" << std::endl;
             std::cout << "uciok" << std::endl;
         } else if (command == "isready") {
             std::cout << "readyok" << std::endl;
@@ -74,6 +77,12 @@ void loop() {
                     if (iss >> val) {
                         hash_size = val;
                         init_tt(hash_size);
+                    }
+                } else if (name == "MaxDepth") {
+                    iss >> token;
+                    int val;
+                    if (iss >> val) {
+                        max_depth_limit = val;
                     }
                 }
             }
@@ -169,11 +178,14 @@ void loop() {
         } else if (command == "go") {
             tt_age++;
             int time_for_move = 1000;
-            int depth_for_move = 64;
+            int depth_for_move = max_depth_limit;
             std::string token;
             int wtime = 0, btime = 0, winc = 0, binc = 0;
+            bool ponder = false;
             while (iss >> token) {
-                if (token == "wtime") {
+                if (token == "ponder") {
+                    ponder = true;
+                } else if (token == "wtime") {
                     iss >> wtime;
                 } else if (token == "btime") {
                     iss >> btime;
@@ -189,15 +201,26 @@ void loop() {
                 }
             }
             if (current_side == WHITE && wtime > 0) {
-                time_for_move = (wtime / 20) + (winc / 2);
+                
+                time_for_move = (winc * 8 / 10) + (wtime / 40); 
+                if (winc == 0) time_for_move = wtime / 30; 
+                
+                
                 if (time_for_move > wtime - 100 && wtime > 100) time_for_move = wtime - 100;
+                else if (wtime <= 100) time_for_move = wtime / 2;
             } else if (current_side == BLACK && btime > 0) {
-                time_for_move = (btime / 20) + (binc / 2);
+                time_for_move = (binc * 8 / 10) + (btime / 40);
+                if (binc == 0) time_for_move = btime / 30;
+                
                 if (time_for_move > btime - 100 && btime > 100) time_for_move = btime - 100;
+                else if (btime <= 100) time_for_move = btime / 2;
             }
-            if (time_for_move > 0 && time_for_move < 50) time_for_move = 50;
-
+            
+            is_pondering.store(ponder, std::memory_order_relaxed);
             search_stopped.store(false);
+            search_time_limit_ms = time_for_move;
+            search_start_time = std::chrono::steady_clock::now();
+            
             for (auto& t : search_threads) {
                 if (t.joinable()) {
                     t.join();
@@ -207,6 +230,9 @@ void loop() {
             for (int i = 0; i < num_threads; ++i) {
                 search_threads.emplace_back([=]() { search(board, current_side, depth_for_move, time_for_move, i); });
             }
+        } else if (command == "ponderhit") {
+            is_pondering.store(false, std::memory_order_relaxed);
+            search_start_time = std::chrono::steady_clock::now();
         } else if (command == "stop") {
             search_stopped.store(true);
             for (auto& t : search_threads) {

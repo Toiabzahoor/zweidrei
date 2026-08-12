@@ -6,6 +6,7 @@
 namespace zweidrei {
 
 extern std::atomic<bool> search_stopped;
+extern std::atomic<bool> is_pondering;
 extern int multipv_limit;
 
 namespace UCI {

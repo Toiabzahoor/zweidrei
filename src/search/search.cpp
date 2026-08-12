@@ -108,6 +108,16 @@ inline void make_move(SimdBoard &next_board, Move m, uint8_t side_to_move) {
     return;
   }
 
+  if (captured != EMPTY_SQUARE) {
+    int cap_type = captured & 0x0F;
+    int phase_val = 0;
+    if (cap_type == KNIGHT || cap_type == BISHOP) phase_val = 1;
+    else if (cap_type == ROOK) phase_val = 2;
+    else if (cap_type == QUEEN) phase_val = 4;
+    next_board.game_phase -= phase_val;
+    if (next_board.game_phase < 0) next_board.game_phase = 0;
+  }
+
   next_board.update_nnue(m.from(), m.to(), piece, captured);
 }
 
@@ -176,7 +186,7 @@ int q_search(const SimdBoard &board, int side_to_move, int alpha, int beta,
     return 10000 - ply;
   }
   if ((nodes_searched & 4095) == 0) {
-    if (search_time_limit_ms > 0) {
+    if (search_time_limit_ms > 0 && !is_pondering.load(std::memory_order_relaxed)) {
       auto now = std::chrono::steady_clock::now();
       if (std::chrono::duration_cast<std::chrono::milliseconds>(
               now - search_start_time)
@@ -241,7 +251,7 @@ int alpha_beta(const SimdBoard &board, int side_to_move, int depth, int alpha,
   }
 
   if ((nodes_searched & 4095) == 0) {
-    if (search_time_limit_ms > 0) {
+    if (search_time_limit_ms > 0 && !is_pondering.load(std::memory_order_relaxed)) {
       auto now = std::chrono::steady_clock::now();
       if (std::chrono::duration_cast<std::chrono::milliseconds>(
               now - search_start_time)
@@ -277,7 +287,7 @@ int alpha_beta(const SimdBoard &board, int side_to_move, int depth, int alpha,
     return q_search(board, side_to_move, alpha, beta, ply);
   }
 
-  // Internal Iterative Deepening (IID)
+  
   if (depth >= 4 && tt_move == 0 && (ply == 0 || (alpha + 1 != beta))) {
     alpha_beta(board, side_to_move, depth - 2, alpha, beta, ply, thread_id, false, nullptr, 0);
     tt_probe(key, depth, alpha, beta, tt_score, tt_move);
@@ -315,12 +325,12 @@ int alpha_beta(const SimdBoard &board, int side_to_move, int depth, int alpha,
     int static_eval = evaluate(board, side_to_move);
     int margin = 120 + depth * 80;
     
-    // Reverse Futility Pruning (Static Null Move Pruning)
+    
     if (static_eval - margin >= beta) {
       return static_eval;
     }
     
-    // Futility Pruning
+    
     if (static_eval + margin < alpha) {
       return q_search(board, side_to_move, alpha, beta, ply);
     }
@@ -404,28 +414,31 @@ int alpha_beta(const SimdBoard &board, int side_to_move, int depth, int alpha,
     }
 
     int score = 0;
-    if (depth >= 3 && m.flags() == 0 && i >= 4 && next_depth == depth - 1 && !in_check) {
-      int R = lmr_table[std::min(depth, 63)][std::min(i, 63)];
+    
+    if (i == 0) {
+      score = -alpha_beta(next_board, side_to_move == WHITE ? BLACK : WHITE,
+                          next_depth, -beta, -alpha, ply + 1, thread_id, true, nullptr, 0);
+    } else {
+      int R = 0;
+      if (depth >= 3 && m.flags() == 0 && i >= 4 && next_depth == depth - 1 && !in_check) {
+        R = lmr_table[std::min(depth, 63)][std::min(i, 63)];
+        
+        int side_idx = (side_to_move == WHITE) ? 0 : 1;
+        int hist = history_table[side_idx][m.from()][m.to()];
+        if (hist > 4000) R -= 1;
+        else if (hist < 100) R += 1;
+        
+        if (R < 1) R = 1;
+        if (R > depth - 2) R = depth - 2;
+      }
       
-      int side_idx = (side_to_move == WHITE) ? 0 : 1;
-      int hist = history_table[side_idx][m.from()][m.to()];
-      if (hist > 4000) R -= 1;
-      else if (hist < 100) R += 1;
-      
-      if (R < 1)
-        R = 1;
-      if (R > depth - 2)
-        R = depth - 2;
-
       score = -alpha_beta(next_board, side_to_move == WHITE ? BLACK : WHITE,
                           next_depth - R, -alpha - 1, -alpha, ply + 1, thread_id, true, nullptr, 0);
-      if (score > alpha) {
+                          
+      if (score > alpha && score < beta) {
         score = -alpha_beta(next_board, side_to_move == WHITE ? BLACK : WHITE,
                             next_depth, -beta, -alpha, ply + 1, thread_id, true, nullptr, 0);
       }
-    } else {
-      score = -alpha_beta(next_board, side_to_move == WHITE ? BLACK : WHITE,
-                          next_depth, -beta, -alpha, ply + 1, thread_id, true, nullptr, 0);
     }
     
     game_history_ply--;
@@ -512,8 +525,6 @@ void print_move(uint16_t m) {
 
 void search(const SimdBoard &board, int side_to_move, int depth_limit,
             int time_limit_ms, int thread_id) {
-  search_start_time = std::chrono::steady_clock::now();
-  search_time_limit_ms = time_limit_ms;
   reset_search();
   nodes_searched = 0;
   seldepth = 0;
@@ -598,12 +609,37 @@ void search(const SimdBoard &board, int side_to_move, int depth_limit,
 
     if (search_stopped.load(std::memory_order_relaxed))
       break;
+      
+    
+    
+    
+    
+    if (d == depth_limit && search_time_limit_ms > 0 && !is_pondering.load(std::memory_order_relaxed)) {
+        auto now = std::chrono::steady_clock::now();
+        auto time_used = std::chrono::duration_cast<std::chrono::milliseconds>(now - search_start_time).count();
+        if (time_used < search_time_limit_ms / 2 && depth_limit < 64) {
+            depth_limit++;
+        }
+    }
   }
 
   if (thread_id == 0) {
+    auto now = std::chrono::steady_clock::now();
+    auto time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - search_start_time).count();
+    if (time_ms == 0) time_ms = 1;
+    uint64_t nps = (nodes_searched * 1000) / time_ms;
+    std::cout << "info nodes " << nodes_searched << " time " << time_ms << " nps " << nps << std::endl;
+
     if (best_move != 0) {
       std::cout << "bestmove ";
       print_move(best_move);
+      
+      std::vector<uint16_t> final_pv;
+      extract_pv(board, side_to_move, 2, final_pv);
+      if (final_pv.size() >= 2) {
+          std::cout << " ponder ";
+          print_move(final_pv[1]);
+      }
       std::cout << std::endl;
     } else {
       std::cout << "bestmove 0000" << std::endl;
@@ -611,4 +647,4 @@ void search(const SimdBoard &board, int side_to_move, int depth_limit,
   }
 }
 
-} // namespace zweidrei
+} 

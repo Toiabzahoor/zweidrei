@@ -29,7 +29,13 @@ void tt_store(uint64_t key, uint16_t move, int16_t score, uint8_t depth, uint8_t
     
     bool replace = false;
     if (TT[index].key != key) {
-        replace = true;
+        int old_depth = TT[index].depth;
+        if (TT[index].age != tt_age) old_depth -= 4; 
+        
+        if (depth >= old_depth || TT[index].flags == TT_EXACT) { 
+            
+            replace = (depth >= old_depth);
+        }
     } else {
         if (TT[index].age != tt_age || depth >= TT[index].depth) {
             replace = true;
